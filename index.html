@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Joyeux 1 an de rencontre ♥ Mimi chat</title>
+<title>Joyeux 1 an de rencontre ♥ Gros matou & Mimi chat</title>
 <style>
 html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:pointer}
 canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh}
@@ -22,7 +22,8 @@ const FAM = '"Arial Black","Arial Bold",Impact,sans-serif';
 const RH = ".,-~:;=!*#$@", RF = ".:-=+*ox#%@";
 
 let W, H, cw, ch, cols, rows, N, zb, kind, lum, fI, fH, tmask, stars, mm;
-let R, hcx, hcy, scy, Rs, BIG, SMALL;
+let R, hcx, hcy, scy, Rs, BIG, SMALL, ms, my;
+const NAMES = ['Gros matou', '&', 'Mimi chat'], MF = 'Verdana,Tahoma,sans-serif';
 
 // 3D heart: 2D implicit heart extruded into a puffy volume
 const hf = (x, y) => { const a = x*x + y*y - 1; return a*a*a - x*x*y*y*y; };
@@ -137,14 +138,12 @@ function resize() {
 
   // "Mimi chat" mask
   o.clearRect(0, 0, W, H);
-  const MF = 'Verdana,Tahoma,sans-serif';
   o.font = `bold 100px ${MF}`;
-  const mw = Math.max(o.measureText('Mimi').width, o.measureText('chat').width);
-  const ms = Math.min(.46*R, 1.15*R/mw*100);
+  const mw = Math.max(...NAMES.map(s => o.measureText(s).width));
+  ms = Math.min(.34*R, 1.45*R/mw*100);
   o.font = `bold ${ms}px ${MF}`; o.textBaseline = 'middle';
-  const my = hcy - .18*R;
-  o.fillText('Mimi', hcx, my - ms*.5);
-  o.fillText('chat', hcx, my + ms*.5);
+  my = hcy - .2*R;
+  NAMES.forEach((s, i) => o.fillText(s, hcx, my + (i - 1)*ms*1.02));
   d = o.getImageData(0, 0, W, H).data;
   mm = new Uint8Array(W*H);
   for (let i = 0; i < W*H; i++) mm[i] = d[i*4 + 3];
@@ -250,8 +249,7 @@ function frame(now) {
       const k = r*cols + c, kd = kind[k];
       let g, col;
       if (tmask[k]) { g = '#'; col = TC[(c*3 + r*2 + tq) % 120]; }
-      else if (kd === 2) { g = '@'; col = mimiCol; }
-      else if (kd === 3) continue;
+      else if (kd === 2 || kd === 3) continue;
       else if (kd) {
         const v = lum[k];
         g = RH[Math.min(11, (v*11) | 0)];
@@ -270,6 +268,14 @@ function frame(now) {
       ctx.fillText(g, c*cw, y);
     }
   }
+
+  ctx.save();
+  ctx.translate(hcx + shift, hcy); ctx.scale(s*ca, s); ctx.translate(-hcx, -hcy);
+  ctx.font = `bold ${ms}px ${MF}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(255,90,150,.95)'; ctx.shadowBlur = 14;
+  ctx.fillStyle = mimiCol;
+  NAMES.forEach((t, i) => ctx.fillText(t, hcx, my + (i - 1)*ms*1.02));
+  ctx.restore();
 
   bx.clearRect(0, 0, bl.width, bl.height);
   bx.drawImage(cv, 0, 0, bl.width, bl.height);
