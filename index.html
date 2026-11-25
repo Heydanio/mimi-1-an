@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Joyeux 1 an de rencontre ♥ Mimi chat</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:pointer}
+canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh}
+#b{filter:blur(7px) saturate(1.3);mix-blend-mode:screen;opacity:.9;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<canvas id="b"></canvas>
+<script>
+(() => {
+const cv = document.getElementById('c'), ctx = cv.getContext('2d', {alpha: false});
+const bl = document.getElementById('b'), bx = bl.getContext('2d');
+const MONO = 'Consolas,"Courier New",monospace';
+const FAM = '"Arial Black","Arial Bold",Impact,sans-serif';
+const RH = ".,-~:;=!*#$@", RF = ".:-=+*ox#%@";
+
+let W, H, cw, ch, cols, rows, N, zb, kind, lum, fI, fH, tmask, stars, mm;
+let R, hcx, hcy, scy, Rs, BIG, SMALL;
+
+// 3D heart: 2D implicit heart extruded into a puffy volume
+const hf = (x, y) => { const a = x*x + y*y - 1; return a*a*a - x*x*y*y*y; };
+const hh = (x, y) => { const f = -hf(x, y); return f > 0 ? .62 * Math.pow(f, .4) : 0; };
+
+function build(step) {
+  const out = [], e = 1e-4;
+  const push = (x, y, z, nx, ny, nz) => out.push(x, y, z, nx, ny, nz, x, y, -z, nx, ny, -nz);
+  for (let y = -1.05; y <= 1.25; y += step)
+    for (let x = -1.25; x <= 1.25; x += step) {
+      const h = hh(x, y); if (h <= 0) continue;
+      let nx = -(hh(x+e, y) - hh(x-e, y)) / (2*e), ny = -(hh(x, y+e) - hh(x, y-e)) / (2*e), nz = 1;
+      const n = Math.hypot(nx, ny, nz); nx /= n; ny /= n; nz /= n;
+      push(x, y, h, nx, ny, nz);
+      const hm = Math.min(hh(x+step, y), hh(x-step, y), hh(x, y+step), hh(x, y-step)), dz = step * .7;
+      for (let z = h - dz; z > hm; z -= dz) {
+        const wz = nz * z / h, m = Math.hypot(nx, ny, wz) || 1;
+        push(x, y, z, nx/m, ny/m, wz/m);
+      }
+    }
+  return new Float32Array(out);
+}
+
+let lx = -.45, ly = .6, lz = .66;
+{ const n = Math.hypot(lx, ly, lz); lx /= n; ly /= n; lz /= n; }
+let hx = lx, hy = ly, hz = lz + 1;
+{ const n = Math.hypot(hx, hy, hz); hx /= n; hy /= n; hz /= n; }
+
+function drawHeart(P, cx, cy, Rr, a, b, tag) {
+  const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+  for (let i = 0; i < P.length; i += 6) {
+    const x = P[i], y = P[i+1], z = P[i+2], nx0 = P[i+3], ny0 = P[i+4], nz0 = P[i+5];
+    const nz1 = -nx0*sa + nz0*ca, nz = ny0*sb + nz1*cb;
+    if (nz < -.35) continue;
+    const x1 = x*ca + z*sa, z1 = -x*sa + z*ca;
+    const y2 = y*cb - z1*sb, z2 = y*sb + z1*cb;
+    const p = 1 / (1 - z2 * .12);
+    const px = cx + x1*Rr*p, py = cy - y2*Rr*p;
+    if (px < 0 || py < 0) continue;
+    const c = (px / cw) | 0, r = (py / ch) | 0;
+    if (c >= cols || r >= rows) continue;
+    const k = r*cols + c;
+    if (z2 <= zb[k]) continue;
+    zb[k] = z2;
+    const nx = nx0*ca + nz0*sa, ny = ny0*cb - nz1*sb;
+    const d = nx*lx + ny*ly + nz*lz, hd = nx*hx + ny*hy + nz*hz, rim = 1 - Math.abs(nz);
+    lum[k] = .07 + .72*(d > 0 ? d : 0) + .9*(hd > 0 ? Math.pow(hd, 28) : 0) + .28*rim*rim;
+    kind[k] = tag;
+  }
+}
+
+// color caches
+const HC = [], SC = [], FC = [], TC = [], ST = [];
+for (let i = 0; i <= 30; i++) {
+  const v = i / 24, L = v <= 1 ? 6 + 50*v : 56 + (v - 1) * 140;
+  HC.push(`hsl(350,95%,${L.toFixed(1)}%)`);
+  SC.push(`hsl(330,100%,${(L + 4).toFixed(1)}%)`);
+}
+for (let h = 0; h < 36; h++) {
+  const row = [];
+  for (let i = 0; i < 16; i++) row.push(`hsl(${h*10},100%,${(15 + 72*Math.pow(i/15, .8)).toFixed(1)}%)`);
+  FC.push(row);
+}
+for (let i = 0; i < 120; i++) TC.push(`hsl(${i*3},100%,68%)`);
+for (let i = 0; i < 8; i++) ST.push(`hsl(225,30%,${20 + i*8}%)`);
+
+function resize() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = innerWidth; H = innerHeight;
+  cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  bl.width = Math.ceil(W/3); bl.height = Math.ceil(H/3);
+  const fs = Math.max(6, Math.min(12, Math.round(W / 150)));
+  ctx.font = `bold ${fs}px ${MONO}`; ctx.textBaseline = 'top';
+  cw = ctx.measureText('M').width; ch = Math.round(fs * 1.08);
+  cols = Math.ceil(W/cw); rows = Math.ceil(H/ch); N = cols*rows;
+  zb = new Float32Array(N); kind = new Uint8Array(N); lum = new Float32Array(N);
+  fI = new Float32Array(N); fH = new Float32Array(N);
+  stars = new Float32Array(N).fill(-1);
+  for (let k = 0; k < N; k++) if (Math.random() < .006) stars[k] = Math.random() * 6.28;
+
+  const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+  const o = oc.getContext('2d', {willReadFrequently: true});
+  o.fillStyle = '#fff'; o.textAlign = 'center'; o.textBaseline = 'top';
+
+  // title mask (ASCII text)
+  const opts = [['Joyeux 1 an de rencontre'], ['Joyeux 1 an', 'de rencontre'], ['Joyeux', '1 an de', 'rencontre']];
+  o.font = `900 100px ${FAM}`;
+  let lines, fp;
+  for (const op of opts) {
+    const w = Math.max(...op.map(s => o.measureText(s).width));
+    fp = Math.min(ch*9, .94*W/w*100, H*.22/(op.length*1.08)); lines = op;
+    if (fp >= ch*6.5) break;
+  }
+  const top = Math.max(ch, H*.025);
+  o.font = `900 ${fp}px ${FAM}`;
+  lines.forEach((s, i) => o.fillText(s, W/2, top + i*fp*1.08));
+  const tb = top + lines.length*fp*1.08 + ch;
+  let d = o.getImageData(0, 0, W, H).data;
+  tmask = new Uint8Array(N);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const x = Math.min(W-1, (c + .5)*cw | 0), y = Math.min(H-1, (r + .5)*ch | 0);
+    tmask[r*cols + c] = d[(y*W + x)*4 + 3] > 110 ? 1 : 0;
+  }
+
+  // layout
+  const small = Math.max(H*.16, ch*10), avail = H - tb - small;
+  R = Math.min(W*.34, avail/2.7);
+  hcx = W/2; hcy = tb + avail/2 + .05*R;
+  const bot = hcy + 1.15*R;
+  Rs = Math.min((H - bot)*.34, R*.3);
+  scy = (bot + H)/2 + .05*Rs;
+
+  // "Mimi chat" mask
+  o.clearRect(0, 0, W, H);
+  const MF = 'Verdana,Tahoma,sans-serif';
+  o.font = `bold 100px ${MF}`;
+  const mw = Math.max(o.measureText('Mimi').width, o.measureText('chat').width);
+  const ms = Math.min(.46*R, 1.15*R/mw*100);
+  o.font = `bold ${ms}px ${MF}`; o.textBaseline = 'middle';
+  const my = hcy - .18*R;
+  o.fillText('Mimi', hcx, my - ms*.5);
+  o.fillText('chat', hcx, my + ms*.5);
+  d = o.getImageData(0, 0, W, H).data;
+  mm = new Uint8Array(W*H);
+  for (let i = 0; i < W*H; i++) mm[i] = d[i*4 + 3];
+
+  BIG = build(Math.min(.012, .55*cw/R));
+  SMALL = build(Math.min(.04, .55*cw/Math.max(Rs, 1)));
+}
+
+// fireworks
+const P = [], RK = [];
+let spawn = 0;
+function launch() {
+  const ty = H*(.08 + Math.random()*.42);
+  RK.push({x: W*(.07 + Math.random()*.86), y: H + 5, vx: (Math.random() - .5)*W*.04, vy: -(H - ty)*1.25, ty, h: Math.random()*360});
+}
+function add(x, y, vx, vy, h, l) { if (P.length < 4000) P.push({x, y, vx, vy, h: ((h % 360) + 360) % 360, l, m: l}); }
+function explode(r) {
+  const S = Math.min(W, H)*(.25 + Math.random()*.25), t = Math.random(), h = r.h;
+  if (t < .22) {
+    const n = 90;
+    for (let i = 0; i < n; i++) {
+      const a = i/n*Math.PI*2, s = Math.sin(a);
+      const X = 16*s*s*s, Y = 13*Math.cos(a) - 5*Math.cos(2*a) - 2*Math.cos(3*a) - Math.cos(4*a);
+      add(r.x, r.y, X/17*S, -Y/17*S, 340 + Math.random()*25, 1.6 + Math.random()*.6);
+    }
+  } else if (t < .45) {
+    for (let j = 0; j < 2; j++) {
+      const n = 60, sp = S*(j ? .55 : 1);
+      for (let i = 0; i < n; i++) { const a = i/n*Math.PI*2; add(r.x, r.y, Math.cos(a)*sp, Math.sin(a)*sp, h + j*150, 1.4 + Math.random()*.6); }
+    }
+  } else {
+    const n = 110 + (Math.random()*60 | 0);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random()*Math.PI*2, sp = S*Math.sqrt(Math.random());
+      add(r.x, r.y, Math.cos(a)*sp, Math.sin(a)*sp, h + Math.random()*40 - 20, 1.2 + Math.random()*1.2);
+    }
+  }
+}
+function dep(x, y, I, h) {
+  if (x < 0 || y < 0 || x >= W || y >= H) return;
+  const k = ((y/ch) | 0)*cols + ((x/cw) | 0);
+  if (I > fI[k]) { fI[k] = I; fH[k] = h; }
+}
+function updateFireworks(dt) {
+  spawn -= dt;
+  if (spawn <= 0) { launch(); if (Math.random() < .4) launch(); spawn = .2 + Math.random()*.45; }
+  for (let i = RK.length - 1; i >= 0; i--) {
+    const r = RK[i];
+    r.x += r.vx*dt; r.y += r.vy*dt;
+    dep(r.x, r.y, 1, 45);
+    if (Math.random() < .6) add(r.x, r.y, (Math.random() - .5)*20, Math.random()*30, 40, .3 + Math.random()*.3);
+    if (r.y <= r.ty) { explode(r); RK.splice(i, 1); }
+  }
+  const dr = Math.exp(-1.8*dt), g = H*.16;
+  for (let i = P.length - 1; i >= 0; i--) {
+    const p = P[i];
+    p.vx *= dr; p.vy = p.vy*dr + g*dt;
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    p.l -= dt;
+    if (p.l <= 0) { P[i] = P[P.length - 1]; P.pop(); continue; }
+    const f = p.l/p.m;
+    if (f < .3 && Math.random() < .35) continue;
+    dep(p.x, p.y, .25 + f*1.05, p.h);
+  }
+  const dk = Math.pow(.86, dt*60);
+  for (let k = 0; k < N; k++) fI[k] *= dk;
+}
+
+const beat = p => { const g = (m, w) => Math.exp(-(((p - m)/w) ** 2)); return 1 + .075*g(.1, .045) + .045*g(.3, .055); };
+
+let t0 = performance.now(), T = 0;
+function frame(now) {
+  const dt = Math.min(.05, (now - t0)/1000); t0 = now; T += dt;
+  updateFireworks(dt);
+
+  zb.fill(-1e9); kind.fill(0);
+  const s = beat(T % 1), a = .45*Math.sin(T*.7), b = .12*Math.sin(T*.53);
+  drawHeart(BIG, hcx, hcy, R*s, a, b, 1);
+  drawHeart(SMALL, hcx, scy, Rs*beat((T + .5) % 1), T*1.8, .15, 4);
+
+  // "Mimi chat" carved into the big heart
+  const ca = Math.cos(a), shift = .55*R*s*Math.sin(a);
+  const c0 = Math.max(0, ((hcx - 1.5*R)/cw) | 0), c1 = Math.min(cols - 1, ((hcx + 1.5*R)/cw) | 0);
+  const r0 = Math.max(0, ((hcy - 1.5*R)/ch) | 0), r1 = Math.min(rows - 1, ((hcy + 1.4*R)/ch) | 0);
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const k = r*cols + c; if (kind[k] !== 1) continue;
+    const mx = hcx + ((c + .5)*cw - hcx - shift)/(s*ca), my = hcy + ((r + .5)*ch - hcy)/s;
+    if (mx >= 0 && my >= 0 && mx < W && my < H && mm[(my | 0)*W + (mx | 0)] > 110) kind[k] = 2;
+  }
+  for (let r = Math.max(1, r0); r < Math.min(rows - 1, r1); r++) for (let c = Math.max(1, c0); c < Math.min(cols - 1, c1); c++) {
+    const k = r*cols + c; if (kind[k] !== 1) continue;
+    if (kind[k-1] === 2 || kind[k+1] === 2 || kind[k-cols] === 2 || kind[k+cols] === 2 ||
+        kind[k-cols-1] === 2 || kind[k-cols+1] === 2 || kind[k+cols-1] === 2 || kind[k+cols+1] === 2) kind[k] = 3;
+  }
+
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const tq = (T*90) | 0, glow = (88 + 8*(s - 1)/.075).toFixed(0);
+  const mimiCol = `hsl(45,100%,${glow}%)`;
+  let last = '';
+  for (let r = 0; r < rows; r++) {
+    const y = r*ch;
+    for (let c = 0; c < cols; c++) {
+      const k = r*cols + c, kd = kind[k];
+      let g, col;
+      if (tmask[k]) { g = '#'; col = TC[(c*3 + r*2 + tq) % 120]; }
+      else if (kd === 2) { g = '@'; col = mimiCol; }
+      else if (kd === 3) continue;
+      else if (kd) {
+        const v = lum[k];
+        g = RH[Math.min(11, (v*11) | 0)];
+        col = (kd === 1 ? HC : SC)[Math.min(30, (v*24) | 0)];
+      } else {
+        const I = fI[k];
+        if (I > .05) {
+          g = RF[Math.min(10, (I/1.2*10) | 0)];
+          col = FC[((fH[k]/10) | 0) % 36][Math.min(15, (I/1.3*15) | 0)];
+        } else if (stars[k] >= 0) {
+          const v = .5 + .5*Math.sin(T*2 + stars[k]*3);
+          g = v > .85 ? '+' : '.'; col = ST[(v*7) | 0];
+        } else continue;
+      }
+      if (col !== last) { ctx.fillStyle = col; last = col; }
+      ctx.fillText(g, c*cw, y);
+    }
+  }
+
+  bx.clearRect(0, 0, bl.width, bl.height);
+  bx.drawImage(cv, 0, 0, bl.width, bl.height);
+  requestAnimationFrame(frame);
+}
+
+let rt;
+addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(resize, 150); });
+addEventListener('pointerdown', e => explode({x: e.clientX, y: e.clientY, h: Math.random()*360}));
+resize();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
